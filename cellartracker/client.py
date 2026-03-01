@@ -38,7 +38,8 @@ class WineResult:
 
     def display(self) -> str:
         score_str = f" | {self.score}" if self.score else ""
-        return f"[{self.wine_id}] {self.vintage} {self.name} - {self.region} ({self.variety}) {self.bottles}{score_str}"
+        bottles_str = f" {self.bottles}x" if self.bottles else ""
+        return f"[{self.wine_id}]{bottles_str} {self.vintage} {self.name} - {self.region} ({self.variety}){score_str}"
 
 
 class CellarTrackerClient:
@@ -215,8 +216,10 @@ class CellarTrackerClient:
                         more_link.decompose()
                     variety = var_span.get_text(strip=True)
 
-            # Quantity from span.el.gty
+            # Quantity: span.el.gty (search) or span.el.num (cellar)
             gty_span = row.find("span", class_="el gty")
+            if not gty_span:
+                gty_span = row.find("span", class_="el num")
             bottles = gty_span.get_text(strip=True) if gty_span else ""
 
             # Score from span.el.scr
