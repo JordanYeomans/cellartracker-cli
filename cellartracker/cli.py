@@ -39,16 +39,18 @@ def login():
 
 @cli.command()
 @click.argument("query")
-def search(query: str):
-    """Search for wines by name, producer, or variety."""
+@click.option("--cellar", "-c", is_flag=True, help="Search only your cellar instead of all wines")
+def search(query: str, cellar: bool):
+    """Search for wines by name, producer, or variety. Searches all wines by default."""
     client = get_client()
-    results = client.search_wines(query)
+    results = client.search_wines(query, my_cellar=cellar)
 
     if not results:
         click.echo("No wines found.")
         return
 
-    click.echo(f"Found {len(results)} wine(s):\n")
+    scope = "cellar" if cellar else "all wines"
+    click.echo(f"Found {len(results)} wine(s) in {scope}:\n")
     for wine in results:
         click.echo(f"  {wine.display()}")
 

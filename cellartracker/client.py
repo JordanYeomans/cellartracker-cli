@@ -122,19 +122,26 @@ class CellarTrackerClient:
             if not self.login():
                 raise RuntimeError("Failed to log in to CellarTracker")
 
-    def search_wines(self, query: str) -> list[WineResult]:
-        """Search for wines by name, producer, or variety."""
+    def search_wines(self, query: str, my_cellar: bool = False) -> list[WineResult]:
+        """Search for wines by name, producer, or variety.
+
+        Args:
+            query: Search string
+            my_cellar: If True, search only your cellar. If False, search all wines.
+        """
         self._ensure_logged_in()
 
-        resp = self.session.get(
-            f"{BASE_URL}/list.asp",
-            params={
-                "fInStock": "0",
-                "Table": "List",
-                "iUserOverride": "0",
-                "szSearch": query,
-            },
-        )
+        params = {
+            "Table": "List",
+            "szSearch": query,
+        }
+        if my_cellar:
+            params["fInStock"] = "1"
+        else:
+            params["fInStock"] = "0"
+            params["iUserOverride"] = "0"
+
+        resp = self.session.get(f"{BASE_URL}/list.asp", params=params)
         resp.raise_for_status()
         return self._parse_search_results(resp.text)
 
