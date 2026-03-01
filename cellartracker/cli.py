@@ -176,5 +176,25 @@ def notes(wine_id: int, limit: int):
         click.echo()
 
 
+@cli.command()
+@click.argument("wine_id", type=int)
+def bottles(wine_id: int):
+    """Show individual bottles for a wine in your cellar, grouped by purchase."""
+    client = get_client()
+    wine_name, total, groups = client.get_bottles(wine_id)
+
+    if wine_name:
+        click.echo(f"{wine_name}")
+
+    if not groups:
+        click.echo("No bottles found.")
+        return
+
+    click.echo(f"{total} bottle(s) across {len(groups)} purchase(s):\n")
+    for group in groups:
+        click.echo(f"  {group.display()}")
+        click.echo()
+
+
 if __name__ == "__main__":
     cli()

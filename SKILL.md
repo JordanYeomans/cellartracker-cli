@@ -1,6 +1,6 @@
 ---
 name: cellartracker
-description: "Manage a CellarTracker wine cellar via CLI. Use when: user wants to search wines, add bottles to their cellar, track pending wine deliveries, view cellar inventory, read tasting notes, or interact with CellarTracker in any way."
+description: "Manage a CellarTracker wine cellar via CLI. Use when: user wants to search wines, add bottles to their cellar, track pending wine deliveries, view cellar inventory, view individual bottles, read tasting notes, or interact with CellarTracker in any way."
 metadata: {"openclaw": {"emoji": "🍷", "requires": {"bins": ["python3", "poetry"]}, "install": [{"id": "poetry", "kind": "shell", "command": "pip install poetry", "bins": ["poetry"], "label": "Install Poetry"}]}}
 ---
 
@@ -43,6 +43,9 @@ ct cellar
 # View pending deliveries
 ct pending
 
+# View individual bottles for a wine (location, size, price, store, date)
+ct bottles WINE_ID
+
 # View community tasting notes for a wine (default 10, use -n for more)
 ct notes WINE_ID
 ct notes WINE_ID -n 50
@@ -57,8 +60,8 @@ ct notes WINE_ID -n 50
 
 ## Architecture
 
-- `cellartracker/client.py` -- `CellarTrackerClient` class handling HTTP auth (cookie-based via `/classic/password.asp`) and HTML parsing with BeautifulSoup. `WineResult` and `TastingNote` dataclasses.
-- `cellartracker/cli.py` -- Click CLI with seven commands. Entry point: `cellartracker.cli:cli`.
+- `cellartracker/client.py` -- `CellarTrackerClient` class handling HTTP auth (cookie-based via `/classic/password.asp`) and HTML parsing with BeautifulSoup. Dataclasses: `WineResult`, `TastingNote`, `Bottle`.
+- `cellartracker/cli.py` -- Click CLI with eight commands. Entry point: `cellartracker.cli:cli`.
 
 ## Key Details
 
@@ -67,4 +70,5 @@ ct notes WINE_ID -n 50
 - Adding wines POSTs form data to `purchase.asp`
 - Default currency is USD; override with `--currency`
 - Tasting notes parsed from `notes.asp?iWine=<id>` (community notes only, no pro reviews)
-- Wine IDs from search output are required for `add`, `add-pending`, and `notes` commands
+- Individual bottles parsed from `list.asp?Table=Inventory&iWine=<id>` (location, store, size, price, date)
+- Wine IDs from search output are required for `add`, `add-pending`, `notes`, and `bottles` commands

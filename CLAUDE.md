@@ -22,8 +22,8 @@ The `ct` command is installed as a console script entry point via Poetry.
 
 ## Architecture
 
-- `cellartracker/client.py` - HTTP client and HTML parsing. `CellarTrackerClient` handles authentication (cookie-based via POST to `/classic/password.asp`) and all CellarTracker interactions. `WineResult` dataclass for search results. `TastingNote` dataclass for community notes.
-- `cellartracker/cli.py` - Click CLI commands: `login`, `search`, `add`, `add-pending`, `cellar`, `pending`, `notes`. Entry point: `cli()` function.
+- `cellartracker/client.py` - HTTP client and HTML parsing. `CellarTrackerClient` handles authentication (cookie-based via POST to `/classic/password.asp`) and all CellarTracker interactions. Dataclasses: `WineResult`, `TastingNote`, `Bottle`.
+- `cellartracker/cli.py` - Click CLI commands: `login`, `search`, `add`, `add-pending`, `cellar`, `pending`, `notes`, `bottles`. Entry point: `cli()` function.
 
 ## Maintenance
 
@@ -35,6 +35,7 @@ The `ct` command is installed as a console script entry point via Poetry.
 - Cookie-based auth: `User` + `PWHash` cookies from POST to `/classic/password.asp`
 - HTML parsing with BeautifulSoup using CSS class selectors (`el nam`, `el loc`, `el var`, `el gty`, `el scr`)
 - Tasting notes parsed from `notes.asp?iWine=<id>` using `ul.comments` structure (author from `span.static`, score from `span.score`, text from `p.break_word`)
+- Individual bottles parsed from `list.asp?Table=Inventory&iWine=<id>` (location from `el loc`, store from `el str`, size from `el siz`, price from `el prc`, date from `el dat`)
 - Form submissions to `purchase.asp` for adding/editing wines
 - Default currency is USD (override with `--currency` flag)
 
@@ -50,4 +51,5 @@ The `ct` command is installed as a console script entry point via Poetry.
 ct login              # Verify auth works
 ct search "test"      # Verify search works
 ct notes <wine_id>    # View community tasting notes (use -n to limit)
+ct bottles <wine_id>  # View individual bottles for a wine
 ```
