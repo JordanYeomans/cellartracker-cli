@@ -304,27 +304,37 @@ class CellarTrackerClient:
                 return True
         return False
 
-    def get_my_cellar(self) -> list[WineResult]:
-        """Get wines currently in your cellar."""
+    def _get_all_pages(self, params: dict) -> list[WineResult]:
+        """Fetch all pages of a list endpoint and return combined results."""
         self._ensure_logged_in()
 
-        resp = self.session.get(
-            f"{BASE_URL}/list.asp",
-            params={"Table": "List"},
-        )
-        resp.raise_for_status()
-        return self._parse_search_results(resp.text)
+        all_results = []
+        page = 1
+        while True:
+            p = {**params, "Page": str(page)}
+            resp = self.session.get(f"{BASE_URL}/list.asp", params=p)
+            resp.raise_for_status()
+            results = self._parse_search_results(resp.text)
+            if not results:
+                break
+            all_results.extend(results)
+            # If we got fewer than 100, we're on the last page
+            if len(results) < 100:
+                break
+            page += 1
+        return all_results
+
+    def get_my_cellar(self) -> list[WineResult]:
+        """Get all wines currently in your cellar, sorted alphabetically."""
+        results = self._get_all_pages({"Table": "List", "O": "SortWine"})
+        results.sort(key=lambda w: w.name.lower())
+        return results
 
     def get_pending(self) -> list[WineResult]:
-        """Get wines pending delivery."""
-        self._ensure_logged_in()
-
-        resp = self.session.get(
-            f"{BASE_URL}/list.asp",
-            params={"Table": "Pending"},
-        )
-        resp.raise_for_status()
-        return self._parse_search_results(resp.text)
+        """Get all wines pending delivery, sorted alphabetically."""
+        results = self._get_all_pages({"Table": "Pending", "O": "SortWine"})
+        results.sort(key=lambda w: w.name.lower())
+        return results
 
     def get_tasting_notes(self, wine_id: int) -> tuple[str, str, list[TastingNote]]:
         """Get community tasting notes for a wine.
