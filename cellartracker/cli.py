@@ -2,13 +2,17 @@
 
 import os
 import sys
+from pathlib import Path
 
 import click
 from dotenv import load_dotenv
 
 from cellartracker.client import CellarTrackerClient
 
-load_dotenv()
+# Load .env from the package's project root so `ct` works from any directory
+_project_root = Path(__file__).resolve().parent.parent
+load_dotenv(_project_root / ".env")
+load_dotenv()  # Also check cwd as fallback
 
 
 def get_client() -> CellarTrackerClient:
