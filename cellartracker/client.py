@@ -2,7 +2,10 @@
 
 from datetime import date
 
+import re
+
 import requests
+from bs4 import BeautifulSoup
 
 from cellartracker.models import PurchaseGroup, WineResult
 from cellartracker.parsers import (
@@ -248,6 +251,229 @@ class CellarTrackerClient:
         groups.extend(pending_groups)
 
         return wine_name, total, groups
+
+    def _find_purchase(self, wine_id: int, purchase_id: int) -> tuple[PurchaseGroup | None, bool]:
+        """Find a purchase group by ID from cellar or pending pages.
+
+        Returns:
+            Tuple of (PurchaseGroup or None, is_pending: bool)
+        """
+        _, _, cellar_groups = parse_cellar_bottles(
+            self.session.get(f"{BASE_URL}/inmycellar.asp", params={"iWine": wine_id}).text
+        )
+        for g in cellar_groups:
+            if g.purchase_id == str(purchase_id):
+                return g, False
+
+        _, _, pending_groups = parse_pending_bottles(
+            self.session.get(f"{BASE_URL}/mypending.asp", params={"iWine": wine_id}).text
+        )
+        for g in pending_groups:
+            if g.purchase_id == str(purchase_id):
+                return g, True
+
+        return None, False
+
+    def _get_edit_form_fields(self, wine_id: int, purchase_id: int) -> dict[str, str]:
+        """Extract server-set field values from the edit form page.
+
+        The edit form uses JavaScript to set select/radio values, but hidden inputs
+        and text inputs have server-set values. This extracts those reliable fields.
+        """
+        resp = self.session.get(
+            f"{BASE_URL}/purchase.asp",
+            params={"iWine": wine_id, "iPurchase": purchase_id},
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        form = soup.find("form", action="purchase.asp")
+        if not form:
+            return {}
+
+        data: dict[str, str] = {}
+        for inp in form.find_all("input"):
+            name = inp.get("name", "")
+            itype = inp.get("type", "text")
+            if not name or itype == "submit":
+                continue
+            if itype == "radio":
+                if inp.has_attr("checked"):
+                    data[name] = inp.get("value", "")
+            elif not inp.has_attr("disabled"):
+                data[name] = inp.get("value", "")
+        for ta in form.find_all("textarea"):
+            name = ta.get("name", "")
+            if name:
+                data[name] = ta.get_text()
+        return data
+
+    def _build_edit_data(
+        self, wine_id: int, purchase_id: int, group: PurchaseGroup, is_pending: bool,
+    ) -> dict[str, str]:
+        """Build POST data for purchase.asp Edit action.
+
+        Combines server-set hidden fields (iInventory, Quantity, etc.) from the edit
+        form with purchase metadata (store, cost, size) that are JS-set on the form.
+        """
+        # Get server-set fields (hidden inputs, text inputs, checked radios)
+        data = self._get_edit_form_fields(wine_id, purchase_id)
+
+        delivery_state = "pending" if is_pending else "delivered"
+
+        # Extract currency and numeric cost from display string like "AUD 10.00($15.41)"
+        currency = "USD"
+        cost = ""
+        if group.cost_per_bottle:
+            currency_match = re.match(r"([A-Z]{3})\s+", group.cost_per_bottle)
+            if currency_match:
+                currency = currency_match.group(1)
+            cost_match = re.search(r"[\d.]+", group.cost_per_bottle)
+            if cost_match:
+                cost = cost_match.group(0)
+
+        # Override JS-set fields with values from parsed purchase data
+        data.setdefault("Size", group.size)
+        data.setdefault("Location", "Cellar")
+        data.setdefault("StoreName", group.store)
+        data.setdefault("BottleCostCurrency", currency)
+        data.setdefault("DeliveryState", delivery_state)
+
+        # Set cost if not already set by the form
+        if not data.get("BottleCost"):
+            data["BottleCost"] = cost
+
+        # Add per-bottle select fields (JS-set, not in form HTML)
+        for i in range(1, int(group.quantity or "0") + 1):
+            suffix = f"_{i}"
+            data.setdefault(f"Size{suffix}", group.size)
+            data.setdefault(f"DeliveryState{suffix}", delivery_state)
+
+        return data
+
+    def edit_purchase(
+        self,
+        wine_id: int,
+        purchase_id: int,
+        store: str | None = None,
+        cost: str | None = None,
+        currency: str | None = None,
+        location: str | None = None,
+        purchase_date: str | None = None,
+    ) -> bool:
+        """Edit an existing purchase.
+
+        Fetches current purchase data, applies overrides, and submits.
+        """
+        self._ensure_logged_in()
+
+        group, is_pending = self._find_purchase(wine_id, purchase_id)
+        if not group:
+            return False
+
+        data = self._build_edit_data(wine_id, purchase_id, group, is_pending)
+        if store is not None:
+            data["StoreName"] = store
+        if cost is not None:
+            data["BottleCost"] = cost
+        if currency is not None:
+            data["BottleCostCurrency"] = currency
+        if location is not None:
+            data["Location"] = location
+            for key in list(data):
+                if key.startswith("Location_"):
+                    data[key] = location
+        if purchase_date is not None:
+            data["PurchaseDate"] = purchase_date
+
+        resp = self.session.post(f"{BASE_URL}/purchase.asp", data=data)
+        resp.raise_for_status()
+        return "wine.asp" in resp.url or "mypending" in resp.url
+
+    def delete_purchase(self, wine_id: int, purchase_id: int) -> bool:
+        """Delete an entire purchase (all its bottles)."""
+        self._ensure_logged_in()
+
+        group, is_pending = self._find_purchase(wine_id, purchase_id)
+        if not group:
+            return False
+
+        data = self._build_edit_data(wine_id, purchase_id, group, is_pending)
+        data["Action"] = "Delete"
+
+        resp = self.session.post(f"{BASE_URL}/purchase.asp", data=data)
+        resp.raise_for_status()
+        return "wine.asp" in resp.url or "mypending" in resp.url
+
+    def consume_bottle(
+        self,
+        wine_id: int,
+        inventory_id: int | None = None,
+        drink_date: str | None = None,
+        note: str = "",
+    ) -> bool:
+        """Consume/drink a bottle.
+
+        Args:
+            wine_id: CellarTracker wine ID
+            inventory_id: Specific bottle to consume (if None, uses first available)
+            drink_date: Date consumed (DD/MM/YYYY), defaults to today
+            note: Tasting note for the consumption
+        """
+        self._ensure_logged_in()
+
+        if drink_date is None:
+            drink_date = date.today().strftime("%d/%m/%Y")
+
+        # If no inventory_id given, find the first available bottle
+        if inventory_id is None:
+            _, _, groups = parse_cellar_bottles(
+                self.session.get(
+                    f"{BASE_URL}/inmycellar.asp", params={"iWine": wine_id}
+                ).text
+            )
+            for g in groups:
+                for b in g.bottles:
+                    if b.inventory_id:
+                        inventory_id = int(b.inventory_id)
+                        break
+                if inventory_id is not None:
+                    break
+            if inventory_id is None:
+                return False
+
+        data: dict[str, str] = {
+            "Choice": "dbDrink",
+            "iWine": str(wine_id),
+            "iInventory": str(inventory_id),
+            "ConsumptionType": "0",
+            "DrinkDate": drink_date,
+            "DrinkNote": note,
+        }
+
+        resp = self.session.post(f"{BASE_URL}/barcode.asp", data=data)
+        resp.raise_for_status()
+        return resp.status_code == 200
+
+    def deliver_purchase(self, wine_id: int, purchase_id: int) -> bool:
+        """Accept delivery of a pending purchase."""
+        self._ensure_logged_in()
+
+        group, is_pending = self._find_purchase(wine_id, purchase_id)
+        if not group or not is_pending:
+            return False
+
+        data = self._build_edit_data(wine_id, purchase_id, group, is_pending=True)
+        today = date.today().strftime("%d/%m/%Y")
+        data["DeliveryState"] = "delivered"
+        data["DeliveryDate"] = today
+        # Update per-bottle delivery state too
+        for key in list(data):
+            if key.startswith("DeliveryState_"):
+                data[key] = "delivered"
+
+        resp = self.session.post(f"{BASE_URL}/purchase.asp", data=data)
+        resp.raise_for_status()
+        return "wine.asp" in resp.url or "mypending" in resp.url
 
     def get_tasting_notes(self, wine_id: int) -> tuple[str, str, list]:
         """Get community tasting notes for a wine.
