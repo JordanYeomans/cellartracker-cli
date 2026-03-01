@@ -1,6 +1,6 @@
 ---
 name: cellartracker
-description: "Manage a CellarTracker wine cellar via CLI. Use when: user wants to search wines, add bottles to their cellar, track pending wine deliveries, view cellar inventory, or interact with CellarTracker in any way."
+description: "Manage a CellarTracker wine cellar via CLI. Use when: user wants to search wines, add bottles to their cellar, track pending wine deliveries, view cellar inventory, read tasting notes, or interact with CellarTracker in any way."
 metadata: {"openclaw": {"emoji": "🍷", "requires": {"bins": ["python3", "poetry"]}, "install": [{"id": "poetry", "kind": "shell", "command": "pip install poetry", "bins": ["poetry"], "label": "Install Poetry"}]}}
 ---
 
@@ -39,6 +39,10 @@ ct cellar
 
 # View pending deliveries
 ct pending
+
+# View community tasting notes for a wine (default 10, use -n for more)
+ct notes WINE_ID
+ct notes WINE_ID -n 50
 ```
 
 ## Workflow
@@ -50,8 +54,8 @@ ct pending
 
 ## Architecture
 
-- `cellartracker/client.py` -- `CellarTrackerClient` class handling HTTP auth (cookie-based via `/classic/password.asp`) and HTML parsing with BeautifulSoup. `WineResult` dataclass for results.
-- `cellartracker/cli.py` -- Click CLI with six commands. Entry point: `cellartracker.cli:cli`.
+- `cellartracker/client.py` -- `CellarTrackerClient` class handling HTTP auth (cookie-based via `/classic/password.asp`) and HTML parsing with BeautifulSoup. `WineResult` and `TastingNote` dataclasses.
+- `cellartracker/cli.py` -- Click CLI with seven commands. Entry point: `cellartracker.cli:cli`.
 
 ## Key Details
 
@@ -59,4 +63,5 @@ ct pending
 - Wine search parses HTML table rows with CSS class selectors (`el nam`, `el loc`, `el var`, `el gty`, `el scr`)
 - Adding wines POSTs form data to `purchase.asp`
 - Default currency is USD; override with `--currency`
-- Wine IDs from search output are required for `add` and `add-pending` commands
+- Tasting notes parsed from `notes.asp?iWine=<id>` (community notes only, no pro reviews)
+- Wine IDs from search output are required for `add`, `add-pending`, and `notes` commands

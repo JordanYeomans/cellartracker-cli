@@ -11,6 +11,21 @@ BASE_URL = "https://www.cellartracker.com"
 
 
 @dataclass
+class TastingNote:
+    author: str
+    date: str
+    score: str
+    text: str
+
+    def display(self) -> str:
+        score_str = f" ({self.score} pts)" if self.score else ""
+        header = f"{self.date} - {self.author}{score_str}"
+        if self.text:
+            return f"{header}\n    {self.text}"
+        return header
+
+
+@dataclass
 class WineResult:
     wine_id: int
     vintage: str
@@ -303,3 +318,97 @@ class CellarTrackerClient:
         )
         resp.raise_for_status()
         return self._parse_search_results(resp.text)
+
+    def get_tasting_notes(self, wine_id: int) -> tuple[str, str, list[TastingNote]]:
+        """Get community tasting notes for a wine.
+
+        Returns:
+            Tuple of (wine_name, avg_score, list of TastingNote)
+        """
+        self._ensure_logged_in()
+
+        resp = self.session.get(
+            f"{BASE_URL}/notes.asp",
+            params={"iWine": wine_id},
+        )
+        resp.raise_for_status()
+        return self._parse_tasting_notes(resp.text)
+
+    def _parse_tasting_notes(self, html: str) -> tuple[str, str, list[TastingNote]]:
+        """Parse tasting notes from the notes.asp page.
+
+        HTML structure:
+          div.wine_notes > h3 (wine name), span.score (avg score)
+          ul.comments > li (each note):
+            div.relative > h3: "date - author wrote/Likes: score"
+            span.score > span.static: score number
+            p.break_word: note text
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Wine name from header
+        wine_notes_div = soup.find("div", class_="wine_notes")
+        wine_name = ""
+        avg_score = ""
+        if wine_notes_div:
+            h3 = wine_notes_div.find("h3")
+            if h3:
+                wine_name = h3.get_text(strip=True)
+
+        # Avg score is in h2 > span.score inside div.panel
+        for score_span in soup.find_all("span", class_="score"):
+            text = score_span.get_text(strip=True)
+            if "Avg" in text:
+                match = re.search(r"([\d.]+)\s*points?", text)
+                if match:
+                    avg_score = match.group(1)
+                break
+
+        # Parse individual notes
+        notes = []
+        comments_ul = soup.find("ul", class_="comments")
+        if not comments_ul:
+            return wine_name, avg_score, notes
+
+        for li in comments_ul.find_all("li", recursive=False):
+            if "divider" in " ".join(li.get("class", [])):
+                continue
+
+            h3 = li.find("h3")
+            if not h3:
+                continue
+
+            # Date: text before " - " in h3
+            h3_text = h3.get_text()
+            note_date = ""
+            if " - " in h3_text:
+                note_date = h3_text.split(" - ")[0].strip()
+
+            # Author: span.static inside the author link in h3
+            author = ""
+            author_link = h3.find("a", class_="hovercard")
+            if author_link:
+                static_span = author_link.find("span", class_="static")
+                if static_span:
+                    author = static_span.get_text(strip=True)
+
+            # Score: span.score > span.static (on the li, not the header)
+            score = ""
+            score_span = li.find("span", class_="score")
+            if score_span:
+                static = score_span.find("span", class_="static")
+                if static:
+                    score = static.get_text(strip=True)
+
+            # Note text
+            note_p = li.find("p", class_="break_word")
+            text = note_p.get_text(strip=True) if note_p else ""
+
+            notes.append(TastingNote(
+                author=author,
+                date=note_date,
+                score=score,
+                text=text,
+            ))
+
+        return wine_name, avg_score, notes

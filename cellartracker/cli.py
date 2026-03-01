@@ -147,5 +147,28 @@ def pending():
         click.echo(f"  {wine.display()}")
 
 
+@cli.command()
+@click.argument("wine_id", type=int)
+@click.option("--limit", "-n", default=10, help="Number of notes to show")
+def notes(wine_id: int, limit: int):
+    """Show community tasting notes for a wine. Use wine ID from search results."""
+    client = get_client()
+    wine_name, avg_score, tasting_notes = client.get_tasting_notes(wine_id)
+
+    if wine_name:
+        click.echo(f"{wine_name}")
+    if avg_score:
+        click.echo(f"Average Score: {avg_score}")
+
+    if not tasting_notes:
+        click.echo("No tasting notes found.")
+        return
+
+    click.echo(f"\nCommunity Notes ({len(tasting_notes)} total):\n")
+    for note in tasting_notes[:limit]:
+        click.echo(f"  {note.display()}")
+        click.echo()
+
+
 if __name__ == "__main__":
     cli()
