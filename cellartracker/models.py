@@ -28,6 +28,7 @@ class BottleInfo:
     location: str
     bin: str
     note: str
+    inventory_id: str = ""
 
 
 @dataclass
@@ -38,9 +39,11 @@ class PurchaseGroup:
     purchase_date: str
     cost_per_bottle: str
     bottles: list[BottleInfo]
+    purchase_id: str = ""
 
     def display(self) -> str:
-        parts = [f"{self.quantity}x {self.size}"]
+        prefix = f"[{self.purchase_id}] " if self.purchase_id else ""
+        parts = [f"{prefix}{self.quantity}x {self.size}"]
         if self.store:
             parts.append(f"from {self.store}")
         if self.purchase_date:
@@ -50,26 +53,43 @@ class PurchaseGroup:
         header = " ".join(parts)
         lines = [header]
 
-        # Summarize bottles by unique (location, bin, status, note)
-        details = Counter()
-        for b in self.bottles:
-            bottle_parts = []
-            if b.location:
-                bottle_parts.append(b.location)
-            if b.bin and b.bin != "n/a":
-                bottle_parts.append(f"bin {b.bin}")
-            if b.status and b.status != "In my cellar":
-                bottle_parts.append(b.status)
-            if b.note and b.note != "n/a":
-                bottle_parts.append(f'"{b.note}"')
-            if bottle_parts:
-                details[" | ".join(bottle_parts)] += 1
+        # List bottles individually when they have inventory_ids, otherwise summarize
+        has_ids = any(b.inventory_id for b in self.bottles)
+        if has_ids:
+            for b in self.bottles:
+                bottle_parts = []
+                if b.inventory_id:
+                    bottle_parts.append(f"[{b.inventory_id}]")
+                if b.location:
+                    bottle_parts.append(b.location)
+                if b.bin and b.bin != "n/a":
+                    bottle_parts.append(f"bin {b.bin}")
+                if b.status and b.status != "In my cellar":
+                    bottle_parts.append(b.status)
+                if b.note and b.note != "n/a":
+                    bottle_parts.append(f'"{b.note}"')
+                if bottle_parts:
+                    lines.append(f"    {' | '.join(bottle_parts)}")
+        else:
+            details = Counter()
+            for b in self.bottles:
+                bottle_parts = []
+                if b.location:
+                    bottle_parts.append(b.location)
+                if b.bin and b.bin != "n/a":
+                    bottle_parts.append(f"bin {b.bin}")
+                if b.status and b.status != "In my cellar":
+                    bottle_parts.append(b.status)
+                if b.note and b.note != "n/a":
+                    bottle_parts.append(f'"{b.note}"')
+                if bottle_parts:
+                    details[" | ".join(bottle_parts)] += 1
 
-        for detail, count in details.items():
-            if count > 1:
-                lines.append(f"    {count}x {detail}")
-            else:
-                lines.append(f"    {detail}")
+            for detail, count in details.items():
+                if count > 1:
+                    lines.append(f"    {count}x {detail}")
+                else:
+                    lines.append(f"    {detail}")
         return "\n".join(lines)
 
 

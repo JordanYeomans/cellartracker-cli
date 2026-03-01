@@ -200,5 +200,92 @@ def bottles(wine_id: int):
         click.echo()
 
 
+@cli.command()
+@click.argument("wine_id", type=int)
+@click.argument("purchase_id", type=int)
+@click.option("--store", default=None, help="Store name")
+@click.option("--cost", default=None, help="Cost per bottle")
+@click.option("--currency", default=None, help="Currency code")
+@click.option("--location", "-l", default=None, help="Storage location")
+@click.option("--date", "purchase_date", default=None, help="Purchase date (MM/DD/YYYY)")
+def edit(wine_id: int, purchase_id: int, store: str | None, cost: str | None,
+         currency: str | None, location: str | None, purchase_date: str | None):
+    """Edit a purchase (change store, cost, location, etc.)."""
+    if all(v is None for v in [store, cost, currency, location, purchase_date]):
+        click.echo("Error: Provide at least one field to edit (--store, --cost, --currency, --location, --date)", err=True)
+        sys.exit(1)
+
+    client = get_client()
+    success = client.edit_purchase(
+        wine_id=wine_id,
+        purchase_id=purchase_id,
+        store=store,
+        cost=cost,
+        currency=currency,
+        location=location,
+        purchase_date=purchase_date,
+    )
+
+    if success:
+        click.echo(f"Updated purchase {purchase_id} for wine {wine_id}")
+    else:
+        click.echo("Failed to edit purchase", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("wine_id", type=int)
+@click.argument("purchase_id", type=int)
+@click.confirmation_option(prompt="Delete this entire purchase?")
+def delete(wine_id: int, purchase_id: int):
+    """Delete an entire purchase and all its bottles."""
+    client = get_client()
+    success = client.delete_purchase(wine_id=wine_id, purchase_id=purchase_id)
+
+    if success:
+        click.echo(f"Deleted purchase {purchase_id} for wine {wine_id}")
+    else:
+        click.echo("Failed to delete purchase", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("wine_id", type=int)
+@click.option("--bottle", "inventory_id", type=int, default=None, help="Specific bottle inventory ID")
+@click.option("--date", "drink_date", default=None, help="Date consumed (MM/DD/YYYY)")
+@click.option("--note", "-n", default="", help="Tasting note")
+def drink(wine_id: int, inventory_id: int | None, drink_date: str | None, note: str):
+    """Consume/drink a bottle. Defaults to first available bottle if --bottle not specified."""
+    client = get_client()
+    success = client.consume_bottle(
+        wine_id=wine_id,
+        inventory_id=inventory_id,
+        drink_date=drink_date,
+        note=note,
+    )
+
+    if success:
+        bottle_str = f" (bottle {inventory_id})" if inventory_id else ""
+        click.echo(f"Consumed wine {wine_id}{bottle_str}")
+    else:
+        click.echo("Failed to consume bottle", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("wine_id", type=int)
+@click.argument("purchase_id", type=int)
+def deliver(wine_id: int, purchase_id: int):
+    """Accept delivery of a pending purchase."""
+    client = get_client()
+    success = client.deliver_purchase(wine_id=wine_id, purchase_id=purchase_id)
+
+    if success:
+        click.echo(f"Delivered purchase {purchase_id} for wine {wine_id}")
+    else:
+        click.echo("Failed to deliver purchase", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()

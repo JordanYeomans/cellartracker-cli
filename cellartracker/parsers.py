@@ -137,6 +137,14 @@ def parse_cellar_bottles(html: str) -> tuple[str, int, list[PurchaseGroup]]:
         if not copy_div:
             continue
 
+        # Extract iPurchase from edit link in header
+        purchase_id = ""
+        edit_link = header.find("a", href=re.compile(r"iPurchase=\d+"))
+        if edit_link:
+            pid_match = re.search(r"iPurchase=(\d+)", edit_link["href"])
+            if pid_match:
+                purchase_id = pid_match.group(1)
+
         h3 = copy_div.find("h3")
         p = copy_div.find("p")
         h3_text = h3.get_text(strip=True) if h3 else ""
@@ -170,6 +178,11 @@ def parse_cellar_bottles(html: str) -> tuple[str, int, list[PurchaseGroup]]:
             for row in table.find_all("tr")[1:]:
                 cells = row.find_all("td")
                 if len(cells) >= 7:
+                    # Extract iInventory from checkbox input
+                    inventory_id = ""
+                    inv_input = row.find("input", {"name": "iInventory"})
+                    if inv_input:
+                        inventory_id = inv_input.get("value", "")
                     bottles.append(BottleInfo(
                         number=cells[0].get_text(strip=True),
                         barcode=cells[1].get_text(strip=True),
@@ -178,6 +191,7 @@ def parse_cellar_bottles(html: str) -> tuple[str, int, list[PurchaseGroup]]:
                         location=cells[4].get_text(strip=True),
                         bin=cells[5].get_text(strip=True),
                         note=cells[6].get_text(strip=True),
+                        inventory_id=inventory_id,
                     ))
 
         total_bottles += len(bottles)
@@ -188,6 +202,7 @@ def parse_cellar_bottles(html: str) -> tuple[str, int, list[PurchaseGroup]]:
             purchase_date=purchase_date,
             cost_per_bottle=cost,
             bottles=bottles,
+            purchase_id=purchase_id,
         ))
 
     return wine_name, total_bottles, groups
@@ -218,6 +233,14 @@ def parse_pending_bottles(html: str) -> tuple[str, int, list[PurchaseGroup]]:
         cells = row.find_all("td")
         if len(cells) < 5:
             continue
+
+        # Extract iPurchase from edit/options links
+        purchase_id = ""
+        options_link = row.find("a", href=re.compile(r"iPurchase=\d+"))
+        if options_link:
+            pid_match = re.search(r"iPurchase=(\d+)", options_link["href"])
+            if pid_match:
+                purchase_id = pid_match.group(1)
 
         # Purchased/Delivered: "9/09/2025, due" or "9/09/2025, 1/10/2025"
         date_text = cells[0].get_text(strip=True)
@@ -252,6 +275,7 @@ def parse_pending_bottles(html: str) -> tuple[str, int, list[PurchaseGroup]]:
                 status="Pending delivery", location="",
                 bin="", note="",
             )] * (int(remaining) if remaining else 0),
+            purchase_id=purchase_id,
         ))
 
     return wine_name, total_bottles, groups

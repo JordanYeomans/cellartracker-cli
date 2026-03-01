@@ -249,6 +249,107 @@ class CellarTrackerClient:
 
         return wine_name, total, groups
 
+    def edit_purchase(
+        self,
+        wine_id: int,
+        purchase_id: int,
+        store: str | None = None,
+        cost: str | None = None,
+        currency: str | None = None,
+        location: str | None = None,
+        purchase_date: str | None = None,
+    ) -> bool:
+        """Edit an existing purchase.
+
+        Only provided fields are changed; None fields are left as-is on the server.
+        """
+        self._ensure_logged_in()
+
+        data: dict[str, str] = {
+            "iWine": str(wine_id),
+            "iPurchase": str(purchase_id),
+            "Action": "Edit",
+        }
+        if store is not None:
+            data["StoreName"] = store
+        if cost is not None:
+            data["BottleCost"] = cost
+        if currency is not None:
+            data["BottleCostCurrency"] = currency
+        if location is not None:
+            data["Location"] = location
+            data["Location_1"] = location
+        if purchase_date is not None:
+            data["PurchaseDate"] = purchase_date
+
+        resp = self.session.post(f"{BASE_URL}/purchase.asp", data=data)
+        resp.raise_for_status()
+        return resp.status_code == 200
+
+    def delete_purchase(self, wine_id: int, purchase_id: int) -> bool:
+        """Delete an entire purchase (all its bottles)."""
+        self._ensure_logged_in()
+
+        data = {
+            "iWine": str(wine_id),
+            "iPurchase": str(purchase_id),
+            "Action": "Delete",
+        }
+        resp = self.session.post(f"{BASE_URL}/purchase.asp", data=data)
+        resp.raise_for_status()
+        return resp.status_code == 200
+
+    def consume_bottle(
+        self,
+        wine_id: int,
+        inventory_id: int | None = None,
+        consumption_type: int = 0,
+        drink_date: str | None = None,
+        note: str = "",
+    ) -> bool:
+        """Consume/drink a bottle.
+
+        Args:
+            wine_id: CellarTracker wine ID
+            inventory_id: Specific bottle to consume (if None, server picks first)
+            consumption_type: 0=drank, 1=lost/destroyed, 2=gave away
+            drink_date: Date consumed (MM/DD/YYYY), defaults to today
+            note: Tasting note for the consumption
+        """
+        self._ensure_logged_in()
+
+        if drink_date is None:
+            drink_date = date.today().strftime("%m/%d/%Y")
+
+        data: dict[str, str] = {
+            "Choice": "dbDrink",
+            "iWine": str(wine_id),
+            "ConsumptionType": str(consumption_type),
+            "DrinkDate": drink_date,
+            "DrinkNote": note,
+        }
+        if inventory_id is not None:
+            data["iInventory"] = str(inventory_id)
+
+        resp = self.session.post(f"{BASE_URL}/barcode.asp", data=data)
+        resp.raise_for_status()
+        return resp.status_code == 200
+
+    def deliver_purchase(self, wine_id: int, purchase_id: int) -> bool:
+        """Accept delivery of a pending purchase."""
+        self._ensure_logged_in()
+
+        today = date.today().strftime("%m/%d/%Y")
+        params = {
+            "iWine": str(wine_id),
+            "iPurchase": str(purchase_id),
+            "DeliveryState": "delivered",
+            "DeliveryDate": today,
+        }
+        resp = self.session.get(f"{BASE_URL}/purchase.asp", params=params)
+        resp.raise_for_status()
+        return resp.status_code == 200
+
     def get_tasting_notes(self, wine_id: int) -> tuple[str, str, list]:
         """Get community tasting notes for a wine.
 
