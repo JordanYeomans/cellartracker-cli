@@ -93,7 +93,26 @@ def add(wine_id: int, quantity: int, size: str, location: str, bin_loc: str,
         sys.exit(1)
 
 
-@cli.command()
+@cli.group(invoke_without_command=True)
+@click.pass_context
+def pending(ctx):
+    """List wines pending delivery, or use 'pending add' to add one."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    client = get_client()
+    results = client.get_pending()
+
+    if not results:
+        click.echo("No wines pending delivery.")
+        return
+
+    click.echo(f"Pending ({len(results)} wines):\n")
+    for wine in results:
+        click.echo(f"  {wine.display()}")
+
+
+@pending.command("add")
 @click.argument("wine_id", type=int)
 @click.option("--quantity", "-q", default=1, help="Number of bottles")
 @click.option("--size", "-s", default="750ml", help="Bottle size")
@@ -101,7 +120,7 @@ def add(wine_id: int, quantity: int, size: str, location: str, bin_loc: str,
 @click.option("--store", default="", help="Store name")
 @click.option("--cost", default="", help="Cost per bottle")
 @click.option("--currency", default="USD", help="Currency code")
-def add_pending(wine_id: int, quantity: int, size: str, note: str,
+def pending_add(wine_id: int, quantity: int, size: str, note: str,
                 store: str, cost: str, currency: str):
     """Add a wine as pending delivery. Use wine ID from search results."""
     client = get_client()
@@ -134,21 +153,6 @@ def cellar():
         return
 
     click.echo(f"Cellar ({len(results)} wines):\n")
-    for wine in results:
-        click.echo(f"  {wine.display()}")
-
-
-@cli.command()
-def pending():
-    """List wines pending delivery."""
-    client = get_client()
-    results = client.get_pending()
-
-    if not results:
-        click.echo("No wines pending delivery.")
-        return
-
-    click.echo(f"Pending ({len(results)} wines):\n")
     for wine in results:
         click.echo(f"  {wine.display()}")
 

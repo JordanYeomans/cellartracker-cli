@@ -22,8 +22,10 @@ The `ct` command is installed as a console script entry point via Poetry.
 
 ## Architecture
 
-- `cellartracker/client.py` - HTTP client and HTML parsing. `CellarTrackerClient` handles authentication (cookie-based via POST to `/classic/password.asp`) and all CellarTracker interactions. Dataclasses: `WineResult`, `TastingNote`, `Bottle`.
-- `cellartracker/cli.py` - Click CLI commands: `login`, `search`, `add`, `add-pending`, `cellar`, `pending`, `notes`, `bottles`. Entry point: `cli()` function.
+- `cellartracker/models.py` - Dataclasses: `WineResult`, `TastingNote`, `BottleInfo`, `PurchaseGroup` with `display()` methods.
+- `cellartracker/parsers.py` - HTML parsing functions for CellarTracker pages (search results, cellar bottles, pending bottles, tasting notes).
+- `cellartracker/client.py` - HTTP client. `CellarTrackerClient` handles authentication (cookie-based via POST to `/classic/password.asp`) and all CellarTracker interactions.
+- `cellartracker/cli.py` - Click CLI commands: `login`, `search`, `add`, `cellar`, `pending` (group: list + add), `notes`, `bottles`. Entry point: `cli()` function.
 
 ## Maintenance
 
