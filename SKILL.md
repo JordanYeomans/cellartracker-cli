@@ -25,8 +25,11 @@ cp .env.example .env
 # Verify credentials
 ct login
 
-# Search wines (returns wine IDs for use with add)
+# Search all wines (returns wine IDs for use with add/notes)
 ct search "QUERY"
+
+# Search only your cellar
+ct search "QUERY" --cellar
 
 # Add wine to cellar
 ct add WINE_ID --quantity N --cost PRICE --currency USD --store "Store" --location "Cellar" --bin "A1" --note "Note"
