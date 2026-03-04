@@ -143,10 +143,29 @@ def pending_add(wine_id: int, quantity: int, size: str, note: str,
 
 
 @cli.command()
-def cellar():
+@click.option("--live", is_flag=True, help="Bypass cache: query live data for each wine (slower but accurate)")
+@click.option("--filter", "-f", "filter_text", default="", help="Filter results by name (case-insensitive)")
+def cellar(live: bool, filter_text: str):
     """List wines in your cellar."""
     client = get_client()
-    results = client.get_my_cellar()
+
+    if live:
+        # Use inmycellar.asp per-wine for live counts (bypasses CT cache)
+        click.echo("Fetching live data (bypassing cache)...")
+        cached = client.get_my_cellar()
+        # Filter first to avoid hammering the API for all 200 wines
+        if filter_text:
+            cached = [w for w in cached if filter_text.lower() in w.name.lower()]
+        results = []
+        for wine in cached:
+            _, total, _ = client.get_bottles(wine.wine_id)
+            # Rebuild display with live bottle count
+            wine.bottles = str(total)
+            results.append(wine)
+    else:
+        results = client.get_my_cellar()
+        if filter_text:
+            results = [w for w in results if filter_text.lower() in w.name.lower()]
 
     if not results:
         click.echo("No wines in cellar (or failed to parse).")
