@@ -216,6 +216,89 @@ class CellarTrackerClient:
         results.sort(key=lambda w: w.name.lower())
         return results
 
+    def get_pending_purchase_id(self, wine_id: int) -> str | None:
+        """Get the iPurchase ID for a pending wine entry.
+
+        Returns the purchase ID string, or None if not found.
+        """
+        self._ensure_logged_in()
+        import re
+        resp = self.session.get(f"{BASE_URL}/mypending.asp", params={"iWine": wine_id})
+        resp.raise_for_status()
+        ids = re.findall(r'iPurchase[_=\s"\']+(\d+)', resp.text)
+        return ids[0] if ids else None
+
+    def deliver_pending(
+        self,
+        wine_id: int,
+        purchase_id: str | None = None,
+        location: str = "Cellar",
+        delivery_date: str | None = None,
+    ) -> bool:
+        """Move a pending wine delivery into the cellar.
+
+        Args:
+            wine_id: CellarTracker wine ID (iWine)
+            purchase_id: iPurchase ID (looked up automatically if not provided)
+            location: Storage location name (must match existing CT location)
+            delivery_date: Date in DD/MM/YYYY format (defaults to today)
+
+        Returns True on success.
+        """
+        self._ensure_logged_in()
+        import re, xml.etree.ElementTree as ET
+
+        if purchase_id is None:
+            purchase_id = self.get_pending_purchase_id(wine_id)
+            if not purchase_id:
+                raise ValueError(f"No pending purchase found for wine {wine_id}")
+
+        if delivery_date is None:
+            delivery_date = date.today().strftime("%d/%m/%Y")
+
+        resp = self.session.post(f"{BASE_URL}/delivery.asp", data={
+            "iPurchase": purchase_id,
+            "DeliveryDate": delivery_date,
+            "Location": location,
+            "Bin": "",
+        })
+        resp.raise_for_status()
+        try:
+            tree = ET.fromstring(resp.text)
+            status = tree.find(".//status")
+            return status is not None and status.text == "success"
+        except ET.ParseError:
+            return False
+
+    def delete_pending(self, wine_id: int, purchase_id: str | None = None) -> bool:
+        """Delete a pending wine purchase entry.
+
+        Args:
+            wine_id: CellarTracker wine ID (iWine)
+            purchase_id: iPurchase ID (looked up automatically if not provided)
+
+        Returns True on success.
+        """
+        self._ensure_logged_in()
+        import xml.etree.ElementTree as ET
+
+        if purchase_id is None:
+            purchase_id = self.get_pending_purchase_id(wine_id)
+            if not purchase_id:
+                raise ValueError(f"No pending purchase found for wine {wine_id}")
+
+        resp = self.session.post(f"{BASE_URL}/bulkeditpurchase.asp", data={
+            "iPurchase": purchase_id,
+            "Action": "Delete",
+        })
+        resp.raise_for_status()
+        try:
+            tree = ET.fromstring(resp.text)
+            status = tree.find(".//status")
+            return status is not None and status.text == "success"
+        except ET.ParseError:
+            return False
+
     def get_bottles(self, wine_id: int) -> tuple[str, int, list[PurchaseGroup]]:
         """Get individual bottles for a wine grouped by purchase.
 
@@ -248,6 +331,47 @@ class CellarTrackerClient:
         groups.extend(pending_groups)
 
         return wine_name, total, groups
+
+    def consume_wine(
+        self,
+        wine_id: int,
+        rating: int | None = None,
+        note: str = "",
+        drink_date: str | None = None,
+        consumption_type: int = 1,
+    ) -> bool:
+        """Mark a bottle as consumed and optionally add a tasting note + rating.
+
+        Args:
+            wine_id: CellarTracker wine ID (iWine)
+            rating: Score out of 100 (optional)
+            note: Tasting note / consumption note (optional)
+            drink_date: Date consumed in MM/DD/YYYY format (defaults to today)
+            consumption_type: 1=Drank, 2=Gift, 3=Restaurant, 4=Sold, etc.
+        """
+        self._ensure_logged_in()
+
+        if drink_date is None:
+            drink_date = date.today().strftime("%m/%d/%Y")
+
+        params = {
+            "iWine": str(wine_id),
+            "Choice": "dbDrink",
+            "ConsumptionType": str(consumption_type),
+            "DrinkDate": drink_date,
+            "Quantity": "1",
+        }
+        if note:
+            params["ConsumptionNote"] = note
+            params["TastingNotes"] = note
+            params["AddNote"] = "1"
+        if rating is not None:
+            params["Rating"] = str(rating)
+            params["AddNote"] = "1"
+
+        resp = self.session.get(f"{BASE_URL}/barcode.asp", params=params)
+        resp.raise_for_status()
+        return resp.status_code == 200
 
     def get_tasting_notes(self, wine_id: int) -> tuple[str, str, list]:
         """Get community tasting notes for a wine.
